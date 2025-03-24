@@ -10,9 +10,12 @@ import (
 func SetupRoutes(app *fiber.App, dbInstance *database.Queries) {
 	app.Get("/healthc", handlers.HealthCheck)
 
-	userHandler := handlers.NewUserHandler(dbInstance)
-
 	// Create URI group for app
 	v1 := app.Group("/v1")
-	v1.Post("/users", userHandler.HandlerCreateUser)
+
+	// Create a userHandler
+	userHandler := handlers.NewUserHandler(dbInstance)
+	v1.Post("/register", userHandler.HandlerCreateUser)
+	v1.Get("/users", userHandler.HandlerGetUser)
+	v1.Post("/login", userHandler.HandlerLoginUser)
 }
