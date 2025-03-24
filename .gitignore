@@ -1,0 +1,6 @@
+# Developer
+.vscode/
+ember
+ember.*
+
+.env
