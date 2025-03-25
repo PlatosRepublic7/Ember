@@ -3,19 +3,14 @@ package handlers
 import (
 	"context"
 	"fmt"
-	"os"
 	"time"
 
 	"github.com/PlatosRepublic7/ember/internal/auth"
 	"github.com/PlatosRepublic7/ember/internal/database"
 	"github.com/PlatosRepublic7/ember/internal/model_converter"
 	"github.com/gofiber/fiber/v2"
-	"github.com/golang-jwt/jwt/v4"
 	"github.com/google/uuid"
 )
-
-var jwtAccessSecret = []byte(os.Getenv("ACCESS_SECRET_KEY"))
-var jwtRefreshSecret = []byte(os.Getenv("REFRESH_SECRET_KEY"))
 
 type UserHandler struct {
 	DB *database.Queries
@@ -94,6 +89,37 @@ func (h *UserHandler) HandlerGetUser(c *fiber.Ctx) error {
 	return c.Status(fiber.StatusOK).JSON(model_converter.DatabaseUserToUser(user))
 }
 
+// Generate a new access token, or respond with an error
+func (h *UserHandler) HandlerRefreshToken(c *fiber.Ctx) error {
+	type getRefreshTokenRequest struct {
+		RefreshToken string `json:"refresh_token"`
+	}
+	var req getRefreshTokenRequest
+	if err := c.BodyParser(&req); err != nil {
+		return c.Status(fiber.StatusBadRequest).JSON(fiber.Map{
+			"Error": "Malformed payload",
+		})
+	}
+
+	accessToken, err := auth.AnalyzeRefreshToken(h.DB, req.RefreshToken)
+	if err != nil {
+		return c.Status(fiber.StatusBadRequest).JSON(fiber.Map{
+			"Error": fmt.Sprintf("%v", err),
+		})
+	}
+
+	if accessToken == "refresh token has expired, login required" {
+		return c.Status(fiber.StatusUnauthorized).JSON(fiber.Map{
+			"Expired Token": accessToken,
+		})
+	}
+
+	return c.Status(fiber.StatusCreated).JSON(fiber.Map{
+		"access": accessToken,
+	})
+}
+
+// This will generate an access-refresh token pair if successfull
 func (h *UserHandler) HandlerLoginUser(c *fiber.Ctx) error {
 	type getUserLoginRequest struct {
 		Username string `json:"username"`
@@ -124,35 +150,41 @@ func (h *UserHandler) HandlerLoginUser(c *fiber.Ctx) error {
 		})
 	}
 
-	// Generate the access token with a short expiration time
-	accessClaims := jwt.MapClaims{
-		"user_id": user.ID,
-		"exp":     time.Now().Add(15 * time.Minute).Unix(),
-	}
-	accessToken := jwt.NewWithClaims(jwt.SigningMethodHS256, accessClaims)
-	accessTokenString, err := accessToken.SignedString(jwtAccessSecret)
+	// Generate the access and refresh tokens
+	accessTokenString, refreshTokenString, err := auth.GenerateTokenPair(user)
 	if err != nil {
 		return c.Status(fiber.StatusInternalServerError).JSON(fiber.Map{
-			"Error": "Could not generate access token",
+			"Error": fmt.Sprintf("%v", err),
 		})
 	}
 
-	// Generate the refresh token with a longer expiration time
-	refreshClaims := jwt.MapClaims{
-		"user_id": user.ID,
-		"exp":     time.Now().Add(7 * 24 * time.Hour).Unix(),
+	// Store the newly created Refresh Token in the database
+	refreshTokenParams := database.CreateRefreshTokenParams{
+		RefreshToken: refreshTokenString,
+		IsValid:      true,
+		CreatedAt:    time.Now().UTC(),
+		UpdatedAt:    time.Now().UTC(),
 	}
-	refreshToken := jwt.NewWithClaims(jwt.SigningMethodHS256, refreshClaims)
-	refreshTokenString, err := refreshToken.SignedString(jwtRefreshSecret)
+
+	dbRefreshToken, err := h.DB.CreateRefreshToken(context.Background(), refreshTokenParams)
 	if err != nil {
 		return c.Status(fiber.StatusInternalServerError).JSON(fiber.Map{
-			"Error": "Could not generate refresh token",
+			"Error": "Unable to store refresh token",
 		})
 	}
 
 	// Return the pair of tokens to the client
 	return c.Status(fiber.StatusCreated).JSON(fiber.Map{
 		"access":  accessTokenString,
-		"refresh": refreshTokenString,
+		"refresh": dbRefreshToken.RefreshToken,
+	})
+}
+
+func (h *UserHandler) HandlerAuthTest(c *fiber.Ctx) error {
+	// We need to retrieve the user's claims
+	userClaims := c.Locals("user")
+	return c.Status(fiber.StatusOK).JSON(fiber.Map{
+		"Message": "This is a protected endpoint",
+		"user":    userClaims,
 	})
 }

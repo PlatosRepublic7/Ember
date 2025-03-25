@@ -23,3 +23,21 @@ func DatabaseUserToUser(dbUser database.User) User {
 		Username:  dbUser.Username,
 	}
 }
+
+type RefreshToken struct {
+	ID           int32     `json:"id"`
+	RefreshToken string    `json:"refresh_token"`
+	IsValid      bool      `json:"is_valid"`
+	CreatedAt    time.Time `json:"created_at"`
+	UpdatedAt    time.Time `json:"updated_at"`
+}
+
+func DatabaseTokenToToken(dbToken database.RefreshToken) RefreshToken {
+	return RefreshToken{
+		ID:           dbToken.ID,
+		RefreshToken: dbToken.RefreshToken,
+		IsValid:      dbToken.IsValid,
+		CreatedAt:    dbToken.CreatedAt,
+		UpdatedAt:    dbToken.UpdatedAt,
+	}
+}

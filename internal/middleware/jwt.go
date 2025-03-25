@@ -3,13 +3,14 @@ package middleware
 import (
 	"errors"
 	"fmt"
+	"os"
 	"strings"
 
 	"github.com/gofiber/fiber/v2"
 	"github.com/golang-jwt/jwt/v4"
 )
 
-var jwtAccessSecret = []byte("the_access_secret")
+var jwtAccessSecret = []byte(os.Getenv("ACCESS_SECRET_KEY"))
 
 // JWTAuthMiddleware validates the access token
 func JWTAuthMiddleware(c *fiber.Ctx) error {

@@ -12,6 +12,37 @@ import (
 	"github.com/google/uuid"
 )
 
+const createRefreshToken = `-- name: CreateRefreshToken :one
+INSERT INTO refresh_tokens(refresh_token, is_valid, created_at, updated_at)
+VALUES ($1, $2, $3, $4)
+RETURNING id, refresh_token, is_valid, created_at, updated_at
+`
+
+type CreateRefreshTokenParams struct {
+	RefreshToken string
+	IsValid      bool
+	CreatedAt    time.Time
+	UpdatedAt    time.Time
+}
+
+func (q *Queries) CreateRefreshToken(ctx context.Context, arg CreateRefreshTokenParams) (RefreshToken, error) {
+	row := q.db.QueryRowContext(ctx, createRefreshToken,
+		arg.RefreshToken,
+		arg.IsValid,
+		arg.CreatedAt,
+		arg.UpdatedAt,
+	)
+	var i RefreshToken
+	err := row.Scan(
+		&i.ID,
+		&i.RefreshToken,
+		&i.IsValid,
+		&i.CreatedAt,
+		&i.UpdatedAt,
+	)
+	return i, err
+}
+
 const createUser = `-- name: CreateUser :one
 INSERT INTO users (id, created_at, updated_at, username, password)
 VALUES ($1, $2, $3, $4, $5)
@@ -41,6 +72,23 @@ func (q *Queries) CreateUser(ctx context.Context, arg CreateUserParams) (User, e
 		&i.UpdatedAt,
 		&i.Username,
 		&i.Password,
+	)
+	return i, err
+}
+
+const getRefreshToken = `-- name: GetRefreshToken :one
+SELECT id, refresh_token, is_valid, created_at, updated_at FROM refresh_tokens WHERE refresh_token = $1
+`
+
+func (q *Queries) GetRefreshToken(ctx context.Context, refreshToken string) (RefreshToken, error) {
+	row := q.db.QueryRowContext(ctx, getRefreshToken, refreshToken)
+	var i RefreshToken
+	err := row.Scan(
+		&i.ID,
+		&i.RefreshToken,
+		&i.IsValid,
+		&i.CreatedAt,
+		&i.UpdatedAt,
 	)
 	return i, err
 }
@@ -77,4 +125,18 @@ func (q *Queries) GetUserLoginInfo(ctx context.Context, username string) (GetUse
 	var i GetUserLoginInfoRow
 	err := row.Scan(&i.ID, &i.Username, &i.Password)
 	return i, err
+}
+
+const updateRefreshToken = `-- name: UpdateRefreshToken :exec
+UPDATE refresh_tokens SET is_valid = $1 WHERE refresh_token = $2
+`
+
+type UpdateRefreshTokenParams struct {
+	IsValid      bool
+	RefreshToken string
+}
+
+func (q *Queries) UpdateRefreshToken(ctx context.Context, arg UpdateRefreshTokenParams) error {
+	_, err := q.db.ExecContext(ctx, updateRefreshToken, arg.IsValid, arg.RefreshToken)
+	return err
 }
