@@ -20,10 +20,12 @@ func NewUserHandler(db *database.Queries) *UserHandler {
 	return &UserHandler{DB: db}
 }
 
+// Handler for registering a new user
 func (h *UserHandler) HandlerCreateUser(c *fiber.Ctx) error {
 	// Define the struct matching the expected request payload
 	type createUserRequest struct {
 		Username string `json:"username"`
+		Email    string `json:"email"`
 		Password string `json:"password"`
 	}
 
@@ -35,9 +37,17 @@ func (h *UserHandler) HandlerCreateUser(c *fiber.Ctx) error {
 	}
 
 	// Validate the input
-	if req.Username == "" || req.Password == "" {
+	if req.Username == "" || req.Password == "" || req.Email == "" {
 		return c.Status(fiber.StatusBadRequest).JSON(fiber.Map{
 			"Error": "Payload is missing required fields",
+		})
+	}
+
+	// Validate the email address
+	ok := auth.IsEmailValid(req.Email)
+	if !ok {
+		return c.Status(fiber.StatusBadRequest).JSON(fiber.Map{
+			"Error": "The provided email address cannot be validated",
 		})
 	}
 
@@ -54,6 +64,7 @@ func (h *UserHandler) HandlerCreateUser(c *fiber.Ctx) error {
 		CreatedAt: time.Now().UTC(),
 		UpdatedAt: time.Now().UTC(),
 		Username:  req.Username,
+		Email:     req.Email,
 		Password:  hashedPassword,
 	}
 
@@ -67,6 +78,7 @@ func (h *UserHandler) HandlerCreateUser(c *fiber.Ctx) error {
 	return c.Status(fiber.StatusCreated).JSON(model_converter.DatabaseUserToUser(user))
 }
 
+// Handler for getting a user from the database by username, returns only one user
 func (h *UserHandler) HandlerGetUser(c *fiber.Ctx) error {
 	type getUserRequest struct {
 		Username string `json:"username"`
@@ -110,7 +122,11 @@ func (h *UserHandler) HandlerRefreshToken(c *fiber.Ctx) error {
 
 	if accessToken == "refresh token has expired, login required" {
 		return c.Status(fiber.StatusUnauthorized).JSON(fiber.Map{
-			"Expired Token": accessToken,
+			"Token": accessToken,
+		})
+	} else if accessToken == "refresh token is blacklisted, login required" {
+		return c.Status(fiber.StatusUnauthorized).JSON(fiber.Map{
+			"Token": accessToken,
 		})
 	}
 
@@ -122,7 +138,7 @@ func (h *UserHandler) HandlerRefreshToken(c *fiber.Ctx) error {
 // This will generate an access-refresh token pair if successfull
 func (h *UserHandler) HandlerLoginUser(c *fiber.Ctx) error {
 	type getUserLoginRequest struct {
-		Username string `json:"username"`
+		Email    string `json:"email"`
 		Password string `json:"password"`
 	}
 
@@ -135,7 +151,7 @@ func (h *UserHandler) HandlerLoginUser(c *fiber.Ctx) error {
 	}
 
 	// Retrieve the user from the database
-	user, err := h.DB.GetUserLoginInfo(context.Background(), req.Username)
+	user, err := h.DB.GetUserLoginInfo(context.Background(), req.Email)
 	if err != nil {
 		return c.Status(fiber.StatusNotFound).JSON(fiber.Map{
 			"Error": fmt.Sprintf("%v", err),
@@ -148,6 +164,32 @@ func (h *UserHandler) HandlerLoginUser(c *fiber.Ctx) error {
 		return c.Status(fiber.StatusBadRequest).JSON(fiber.Map{
 			"Error": "Incorrect password",
 		})
+	}
+
+	// We need to check that if there are any refresh tokens in the database for this user,
+	// then we need to invalidate them and generate a new one.
+	refreshTokenList, err := h.DB.GetAllUserRefreshTokens(context.Background(), user.ID)
+	if err != nil {
+		return c.Status(fiber.StatusInternalServerError).JSON(fiber.Map{
+			"Error": fmt.Sprintf("%v", err),
+		})
+	}
+
+	for i := range refreshTokenList {
+		if refreshTokenList[i].IsValid {
+			refreshTokenUpdateParams := database.UpdateRefreshTokenParams{
+				IsValid:      false,
+				UpdatedAt:    time.Now().UTC(),
+				RefreshToken: refreshTokenList[i].RefreshToken,
+			}
+
+			err := h.DB.UpdateRefreshToken(context.Background(), refreshTokenUpdateParams)
+			if err != nil {
+				return c.Status(fiber.StatusInternalServerError).JSON(fiber.Map{
+					"Error": fmt.Sprintf("%v", err),
+				})
+			}
+		}
 	}
 
 	// Generate the access and refresh tokens
@@ -164,6 +206,7 @@ func (h *UserHandler) HandlerLoginUser(c *fiber.Ctx) error {
 		IsValid:      true,
 		CreatedAt:    time.Now().UTC(),
 		UpdatedAt:    time.Now().UTC(),
+		UserID:       user.ID,
 	}
 
 	dbRefreshToken, err := h.DB.CreateRefreshToken(context.Background(), refreshTokenParams)
@@ -180,6 +223,46 @@ func (h *UserHandler) HandlerLoginUser(c *fiber.Ctx) error {
 	})
 }
 
+// Handler for logging out a user. This expects a refresh token, and will invalidate the token,
+// preventing any ability to generate new access tokens from it
+func (h *UserHandler) HandlerLogoutUser(c *fiber.Ctx) error {
+	type updateRefreshToken struct {
+		RefreshToken string `json:"refresh_token"`
+	}
+
+	var req updateRefreshToken
+	if err := c.BodyParser(&req); err != nil {
+		return c.Status(fiber.StatusBadRequest).JSON(fiber.Map{
+			"Error": "Malformed payload",
+		})
+	}
+
+	dbRefreshToken, err := h.DB.GetRefreshToken(context.Background(), req.RefreshToken)
+	if err != nil {
+		return c.Status(fiber.StatusNotFound).JSON(fiber.Map{
+			"Error": "Refresh token not found",
+		})
+	}
+	// Construct the Refresh Token parameters for invalidation
+	refreshTokenParams := database.UpdateRefreshTokenParams{
+		IsValid:      false,
+		UpdatedAt:    time.Now().UTC(),
+		RefreshToken: dbRefreshToken.RefreshToken,
+	}
+
+	err = h.DB.UpdateRefreshToken(context.Background(), refreshTokenParams)
+	if err != nil {
+		return c.Status(fiber.StatusInternalServerError).JSON(fiber.Map{
+			"Error": fmt.Sprintf("%v", err),
+		})
+	}
+
+	return c.Status(fiber.StatusOK).JSON(fiber.Map{
+		"Success": "Logout complete",
+	})
+}
+
+// Handler for testing JWT auth middleware
 func (h *UserHandler) HandlerAuthTest(c *fiber.Ctx) error {
 	// We need to retrieve the user's claims
 	userClaims := c.Locals("user")

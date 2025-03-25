@@ -13,9 +13,9 @@ import (
 )
 
 const createRefreshToken = `-- name: CreateRefreshToken :one
-INSERT INTO refresh_tokens(refresh_token, is_valid, created_at, updated_at)
-VALUES ($1, $2, $3, $4)
-RETURNING id, refresh_token, is_valid, created_at, updated_at
+INSERT INTO refresh_tokens(refresh_token, is_valid, created_at, updated_at, user_id)
+VALUES ($1, $2, $3, $4, $5)
+RETURNING id, refresh_token, is_valid, created_at, updated_at, user_id
 `
 
 type CreateRefreshTokenParams struct {
@@ -23,6 +23,7 @@ type CreateRefreshTokenParams struct {
 	IsValid      bool
 	CreatedAt    time.Time
 	UpdatedAt    time.Time
+	UserID       uuid.UUID
 }
 
 func (q *Queries) CreateRefreshToken(ctx context.Context, arg CreateRefreshTokenParams) (RefreshToken, error) {
@@ -31,6 +32,7 @@ func (q *Queries) CreateRefreshToken(ctx context.Context, arg CreateRefreshToken
 		arg.IsValid,
 		arg.CreatedAt,
 		arg.UpdatedAt,
+		arg.UserID,
 	)
 	var i RefreshToken
 	err := row.Scan(
@@ -39,14 +41,15 @@ func (q *Queries) CreateRefreshToken(ctx context.Context, arg CreateRefreshToken
 		&i.IsValid,
 		&i.CreatedAt,
 		&i.UpdatedAt,
+		&i.UserID,
 	)
 	return i, err
 }
 
 const createUser = `-- name: CreateUser :one
-INSERT INTO users (id, created_at, updated_at, username, password)
-VALUES ($1, $2, $3, $4, $5)
-RETURNING id, created_at, updated_at, username, password
+INSERT INTO users (id, created_at, updated_at, username, email, password)
+VALUES ($1, $2, $3, $4, $5, $6)
+RETURNING id, created_at, updated_at, username, password, email
 `
 
 type CreateUserParams struct {
@@ -54,6 +57,7 @@ type CreateUserParams struct {
 	CreatedAt time.Time
 	UpdatedAt time.Time
 	Username  string
+	Email     string
 	Password  string
 }
 
@@ -63,6 +67,7 @@ func (q *Queries) CreateUser(ctx context.Context, arg CreateUserParams) (User, e
 		arg.CreatedAt,
 		arg.UpdatedAt,
 		arg.Username,
+		arg.Email,
 		arg.Password,
 	)
 	var i User
@@ -72,12 +77,47 @@ func (q *Queries) CreateUser(ctx context.Context, arg CreateUserParams) (User, e
 		&i.UpdatedAt,
 		&i.Username,
 		&i.Password,
+		&i.Email,
 	)
 	return i, err
 }
 
+const getAllUserRefreshTokens = `-- name: GetAllUserRefreshTokens :many
+SELECT id, refresh_token, is_valid, created_at, updated_at, user_id FROM refresh_tokens WHERE user_id = $1
+`
+
+func (q *Queries) GetAllUserRefreshTokens(ctx context.Context, userID uuid.UUID) ([]RefreshToken, error) {
+	rows, err := q.db.QueryContext(ctx, getAllUserRefreshTokens, userID)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+	var items []RefreshToken
+	for rows.Next() {
+		var i RefreshToken
+		if err := rows.Scan(
+			&i.ID,
+			&i.RefreshToken,
+			&i.IsValid,
+			&i.CreatedAt,
+			&i.UpdatedAt,
+			&i.UserID,
+		); err != nil {
+			return nil, err
+		}
+		items = append(items, i)
+	}
+	if err := rows.Close(); err != nil {
+		return nil, err
+	}
+	if err := rows.Err(); err != nil {
+		return nil, err
+	}
+	return items, nil
+}
+
 const getRefreshToken = `-- name: GetRefreshToken :one
-SELECT id, refresh_token, is_valid, created_at, updated_at FROM refresh_tokens WHERE refresh_token = $1
+SELECT id, refresh_token, is_valid, created_at, updated_at, user_id FROM refresh_tokens WHERE refresh_token = $1
 `
 
 func (q *Queries) GetRefreshToken(ctx context.Context, refreshToken string) (RefreshToken, error) {
@@ -89,12 +129,13 @@ func (q *Queries) GetRefreshToken(ctx context.Context, refreshToken string) (Ref
 		&i.IsValid,
 		&i.CreatedAt,
 		&i.UpdatedAt,
+		&i.UserID,
 	)
 	return i, err
 }
 
 const getUserByUsername = `-- name: GetUserByUsername :one
-SELECT id, created_at, updated_at, username, password FROM users WHERE username = $1
+SELECT id, created_at, updated_at, username, password, email FROM users WHERE username = $1
 `
 
 func (q *Queries) GetUserByUsername(ctx context.Context, username string) (User, error) {
@@ -106,37 +147,47 @@ func (q *Queries) GetUserByUsername(ctx context.Context, username string) (User,
 		&i.UpdatedAt,
 		&i.Username,
 		&i.Password,
+		&i.Email,
 	)
 	return i, err
 }
 
 const getUserLoginInfo = `-- name: GetUserLoginInfo :one
-SELECT id, username, password FROM users WHERE username = $1
+SELECT id, username, email, password FROM users WHERE email = $1
 `
 
 type GetUserLoginInfoRow struct {
 	ID       uuid.UUID
 	Username string
+	Email    string
 	Password string
 }
 
-func (q *Queries) GetUserLoginInfo(ctx context.Context, username string) (GetUserLoginInfoRow, error) {
-	row := q.db.QueryRowContext(ctx, getUserLoginInfo, username)
+func (q *Queries) GetUserLoginInfo(ctx context.Context, email string) (GetUserLoginInfoRow, error) {
+	row := q.db.QueryRowContext(ctx, getUserLoginInfo, email)
 	var i GetUserLoginInfoRow
-	err := row.Scan(&i.ID, &i.Username, &i.Password)
+	err := row.Scan(
+		&i.ID,
+		&i.Username,
+		&i.Email,
+		&i.Password,
+	)
 	return i, err
 }
 
 const updateRefreshToken = `-- name: UpdateRefreshToken :exec
-UPDATE refresh_tokens SET is_valid = $1 WHERE refresh_token = $2
+UPDATE refresh_tokens SET 
+is_valid = $1, updated_at = $2 
+WHERE refresh_token = $3
 `
 
 type UpdateRefreshTokenParams struct {
 	IsValid      bool
+	UpdatedAt    time.Time
 	RefreshToken string
 }
 
 func (q *Queries) UpdateRefreshToken(ctx context.Context, arg UpdateRefreshTokenParams) error {
-	_, err := q.db.ExecContext(ctx, updateRefreshToken, arg.IsValid, arg.RefreshToken)
+	_, err := q.db.ExecContext(ctx, updateRefreshToken, arg.IsValid, arg.UpdatedAt, arg.RefreshToken)
 	return err
 }

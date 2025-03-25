@@ -3,7 +3,10 @@ package auth
 import (
 	"context"
 	"fmt"
+	"net"
+	"net/mail"
 	"os"
+	"strings"
 	"time"
 
 	"github.com/PlatosRepublic7/ember/internal/database"
@@ -24,6 +27,26 @@ func CheckPasswordHash(password string, hash string) bool {
 	return err == nil
 }
 
+// Validate Email. Checks for correct formatting and valid domain
+func IsEmailValid(email string) bool {
+	_, err := mail.ParseAddress(email)
+	if err != nil {
+		return false
+	}
+
+	// Split email into local-part@domain
+	parts := strings.Split(email, "@")
+	domain := parts[1]
+
+	// Try to find MX records
+	mxRecords, err := net.LookupMX(domain)
+	if err != nil || len(mxRecords) == 0 {
+		return false
+	}
+
+	return true
+}
+
 // Generate an access and refresh token pair for login functionality, return an error if either cannot be generated
 func GenerateTokenPair(user database.GetUserLoginInfoRow) (string, string, error) {
 
@@ -31,6 +54,7 @@ func GenerateTokenPair(user database.GetUserLoginInfoRow) (string, string, error
 	accessClaims := jwt.MapClaims{
 		"user_id":  user.ID,
 		"username": user.Username,
+		"email":    user.Email,
 		"exp":      time.Now().Add(15 * time.Minute).Unix(),
 	}
 	accessToken := jwt.NewWithClaims(jwt.SigningMethodHS256, accessClaims)
@@ -43,6 +67,7 @@ func GenerateTokenPair(user database.GetUserLoginInfoRow) (string, string, error
 	refreshClaims := jwt.MapClaims{
 		"user_id":  user.ID,
 		"username": user.Username,
+		"email":    user.Email,
 		"exp":      time.Now().Add(7 * 24 * time.Hour).Unix(),
 	}
 	refreshToken := jwt.NewWithClaims(jwt.SigningMethodHS256, refreshClaims)
@@ -63,6 +88,10 @@ func AnalyzeRefreshToken(DB *database.Queries, refreshToken string) (string, err
 		return "", fmt.Errorf("refresh token does not exist")
 	}
 
+	if !dbRefreshToken.IsValid {
+		return "refresh token is blacklisted, login required", nil
+	}
+
 	token, err := jwt.Parse(dbRefreshToken.RefreshToken, func(token *jwt.Token) (interface{}, error) {
 		if _, ok := token.Method.(*jwt.SigningMethodHMAC); !ok {
 			return nil, fmt.Errorf("unexpected signing method: %v", token.Header["alg"])
@@ -78,6 +107,7 @@ func AnalyzeRefreshToken(DB *database.Queries, refreshToken string) (string, err
 		// We need to update our database entry for this refresh token to be invalid
 		params := database.UpdateRefreshTokenParams{
 			IsValid:      false,
+			UpdatedAt:    time.Now().UTC(),
 			RefreshToken: dbRefreshToken.RefreshToken,
 		}
 		err := DB.UpdateRefreshToken(context.Background(), params)
@@ -96,6 +126,7 @@ func AnalyzeRefreshToken(DB *database.Queries, refreshToken string) (string, err
 	accessClaims := jwt.MapClaims{
 		"user_id":  claims["user_id"],
 		"username": claims["username"],
+		"email":    claims["email"],
 		"exp":      time.Now().Add(15 * time.Minute).Unix(),
 	}
 	accessToken := jwt.NewWithClaims(jwt.SigningMethodHS256, accessClaims)

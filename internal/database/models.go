@@ -16,6 +16,7 @@ type RefreshToken struct {
 	IsValid      bool
 	CreatedAt    time.Time
 	UpdatedAt    time.Time
+	UserID       uuid.UUID
 }
 
 type User struct {
@@ -24,4 +25,5 @@ type User struct {
 	UpdatedAt time.Time
 	Username  string
 	Password  string
+	Email     string
 }
