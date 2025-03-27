@@ -68,7 +68,7 @@ func (h *UserHandler) HandlerCreateUser(c *fiber.Ctx) error {
 		Password:  hashedPassword,
 	}
 
-	user, err := h.DB.CreateUser(context.Background(), params)
+	user, err := h.DB.CreateUser(c.UserContext(), params)
 	if err != nil {
 		return c.Status(fiber.StatusBadRequest).JSON(fiber.Map{
 			"Error": "Failed to create user",
@@ -91,7 +91,7 @@ func (h *UserHandler) HandlerGetUser(c *fiber.Ctx) error {
 		})
 	}
 
-	user, err := h.DB.GetUserByUsername(context.Background(), req.Username)
+	user, err := h.DB.GetUserByUsername(c.UserContext(), req.Username)
 	if err != nil {
 		return c.Status(fiber.StatusNotFound).JSON(fiber.Map{
 			"GET Error": fmt.Sprintf("%v", err),
@@ -113,7 +113,7 @@ func (h *UserHandler) HandlerRefreshToken(c *fiber.Ctx) error {
 		})
 	}
 
-	accessToken, err := auth.AnalyzeRefreshToken(h.DB, req.RefreshToken)
+	accessToken, err := auth.AnalyzeRefreshToken(h.DB, c, req.RefreshToken)
 	if err != nil {
 		return c.Status(fiber.StatusBadRequest).JSON(fiber.Map{
 			"Error": fmt.Sprintf("%v", err),
@@ -151,7 +151,7 @@ func (h *UserHandler) HandlerLoginUser(c *fiber.Ctx) error {
 	}
 
 	// Retrieve the user from the database
-	user, err := h.DB.GetUserLoginInfo(context.Background(), req.Email)
+	user, err := h.DB.GetUserLoginInfo(c.UserContext(), req.Email)
 	if err != nil {
 		return c.Status(fiber.StatusNotFound).JSON(fiber.Map{
 			"Error": fmt.Sprintf("%v", err),
@@ -183,7 +183,7 @@ func (h *UserHandler) HandlerLoginUser(c *fiber.Ctx) error {
 				RefreshToken: refreshTokenList[i].RefreshToken,
 			}
 
-			err := h.DB.UpdateRefreshToken(context.Background(), refreshTokenUpdateParams)
+			err := h.DB.UpdateRefreshToken(c.UserContext(), refreshTokenUpdateParams)
 			if err != nil {
 				return c.Status(fiber.StatusInternalServerError).JSON(fiber.Map{
 					"Error": fmt.Sprintf("%v", err),
@@ -209,7 +209,7 @@ func (h *UserHandler) HandlerLoginUser(c *fiber.Ctx) error {
 		UserID:       user.ID,
 	}
 
-	dbRefreshToken, err := h.DB.CreateRefreshToken(context.Background(), refreshTokenParams)
+	dbRefreshToken, err := h.DB.CreateRefreshToken(c.UserContext(), refreshTokenParams)
 	if err != nil {
 		return c.Status(fiber.StatusInternalServerError).JSON(fiber.Map{
 			"Error": "Unable to store refresh token",
@@ -237,7 +237,7 @@ func (h *UserHandler) HandlerLogoutUser(c *fiber.Ctx) error {
 		})
 	}
 
-	dbRefreshToken, err := h.DB.GetRefreshToken(context.Background(), req.RefreshToken)
+	dbRefreshToken, err := h.DB.GetRefreshToken(c.UserContext(), req.RefreshToken)
 	if err != nil {
 		return c.Status(fiber.StatusNotFound).JSON(fiber.Map{
 			"Error": "Refresh token not found",
@@ -250,7 +250,7 @@ func (h *UserHandler) HandlerLogoutUser(c *fiber.Ctx) error {
 		RefreshToken: dbRefreshToken.RefreshToken,
 	}
 
-	err = h.DB.UpdateRefreshToken(context.Background(), refreshTokenParams)
+	err = h.DB.UpdateRefreshToken(c.UserContext(), refreshTokenParams)
 	if err != nil {
 		return c.Status(fiber.StatusInternalServerError).JSON(fiber.Map{
 			"Error": fmt.Sprintf("%v", err),

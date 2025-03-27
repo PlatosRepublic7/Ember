@@ -5,10 +5,23 @@
 package database
 
 import (
+	"database/sql"
 	"time"
 
 	"github.com/google/uuid"
 )
+
+type Message struct {
+	ID          uuid.UUID
+	SenderID    uuid.UUID
+	RecipientID uuid.UUID
+	Content     string
+	CreatedAt   time.Time
+	ReadAt      sql.NullTime
+	TtlSeconds  sql.NullInt32
+	ExpiresAt   sql.NullTime
+	Deleted     bool
+}
 
 type RefreshToken struct {
 	ID           int32

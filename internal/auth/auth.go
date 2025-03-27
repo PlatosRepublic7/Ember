@@ -1,7 +1,6 @@
 package auth
 
 import (
-	"context"
 	"fmt"
 	"net"
 	"net/mail"
@@ -10,6 +9,7 @@ import (
 	"time"
 
 	"github.com/PlatosRepublic7/ember/internal/database"
+	"github.com/gofiber/fiber/v2"
 	"github.com/golang-jwt/jwt/v4"
 	"golang.org/x/crypto/bcrypt"
 )
@@ -81,9 +81,9 @@ func GenerateTokenPair(user database.GetUserLoginInfoRow) (string, string, error
 
 // Check refreshToken for expiration, if it is valid, generate and return an accessTokenString.
 // If it has expired, invalidate it, otherwise return an error
-func AnalyzeRefreshToken(DB *database.Queries, refreshToken string) (string, error) {
+func AnalyzeRefreshToken(DB *database.Queries, c *fiber.Ctx, refreshToken string) (string, error) {
 	// Query the database to check that the given refreshToken exists within our system
-	dbRefreshToken, err := DB.GetRefreshToken(context.Background(), refreshToken)
+	dbRefreshToken, err := DB.GetRefreshToken(c.UserContext(), refreshToken)
 	if err != nil {
 		return "", fmt.Errorf("refresh token does not exist")
 	}
@@ -110,7 +110,7 @@ func AnalyzeRefreshToken(DB *database.Queries, refreshToken string) (string, err
 			UpdatedAt:    time.Now().UTC(),
 			RefreshToken: dbRefreshToken.RefreshToken,
 		}
-		err := DB.UpdateRefreshToken(context.Background(), params)
+		err := DB.UpdateRefreshToken(c.UserContext(), params)
 		if err != nil {
 			return "", fmt.Errorf("cannot invalidate refresh token")
 		}

@@ -19,7 +19,6 @@ func SetupRoutes(app *fiber.App, dbInstance *database.Queries) {
 
 	// All non-protected endpoints
 	v1.Post("/register", userHandler.HandlerCreateUser)
-	v1.Get("/users", userHandler.HandlerGetUser)
 	v1.Post("/login", userHandler.HandlerLoginUser)
 	v1.Post("/logout", userHandler.HandlerLogoutUser)
 	v1.Post("/refresh", userHandler.HandlerRefreshToken)
@@ -27,4 +26,9 @@ func SetupRoutes(app *fiber.App, dbInstance *database.Queries) {
 	// Group for all auth protected endpoints
 	protected := app.Group("/v1", middleware.JWTAuthMiddleware)
 	protected.Get("/test", userHandler.HandlerAuthTest)
+	protected.Get("/users", userHandler.HandlerGetUser)
+
+	// Create a messageHandler
+	messageHandler := handlers.NewMessageHandler(dbInstance)
+	protected.Post("/message", messageHandler.HandlerCreateMessage)
 }

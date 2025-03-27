@@ -1,6 +1,7 @@
 package model_converter
 
 import (
+	"database/sql"
 	"time"
 
 	"github.com/PlatosRepublic7/ember/internal/database"
@@ -13,7 +14,6 @@ type User struct {
 	UpdatedAt time.Time `json:"updated_at"`
 	Username  string    `json:"username"`
 	Email     string    `json:"email"`
-	Password  string    `json:"password"`
 }
 
 func DatabaseUserToUser(dbUser database.User) User {
@@ -41,5 +41,31 @@ func DatabaseTokenToToken(dbToken database.RefreshToken) RefreshToken {
 		IsValid:      dbToken.IsValid,
 		CreatedAt:    dbToken.CreatedAt,
 		UpdatedAt:    dbToken.UpdatedAt,
+	}
+}
+
+type Message struct {
+	ID          uuid.UUID     `json:"id"`
+	SenderID    uuid.UUID     `json:"sender_id"`
+	RecipientID uuid.UUID     `json:"recipient_id"`
+	Content     string        `json:"content"`
+	CreatedAt   time.Time     `json:"created_at"`
+	ReadAt      sql.NullTime  `json:"read_at"`
+	TtlSeconds  sql.NullInt32 `json:"ttl_seconds"`
+	ExpiresAt   sql.NullTime  `json:"expires_at"`
+	Deleted     bool          `json:"deleted"`
+}
+
+func DatabaseMessageToMessage(dbMessage database.Message) Message {
+	return Message{
+		ID:          dbMessage.ID,
+		SenderID:    dbMessage.SenderID,
+		RecipientID: dbMessage.RecipientID,
+		Content:     dbMessage.Content,
+		CreatedAt:   dbMessage.CreatedAt,
+		ReadAt:      dbMessage.ReadAt,
+		TtlSeconds:  dbMessage.TtlSeconds,
+		ExpiresAt:   dbMessage.ExpiresAt,
+		Deleted:     dbMessage.Deleted,
 	}
 }
