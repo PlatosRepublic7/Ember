@@ -11,6 +11,7 @@ import (
 	"github.com/PlatosRepublic7/ember/internal/database"
 	"github.com/gofiber/fiber/v2"
 	"github.com/golang-jwt/jwt/v4"
+	"github.com/google/uuid"
 	"golang.org/x/crypto/bcrypt"
 )
 
@@ -25,6 +26,19 @@ func HashPassword(password string) (string, error) {
 func CheckPasswordHash(password string, hash string) bool {
 	err := bcrypt.CompareHashAndPassword([]byte(hash), []byte(password))
 	return err == nil
+}
+
+// Extract the requesting users id from the access token
+func GetUserIDFromToken(c *fiber.Ctx) (uuid.UUID, error) {
+	// Retrieve the requesting users Token
+	claims := c.Locals("user").(jwt.MapClaims)
+
+	// Get the user_id from the claims
+	userID, err := uuid.Parse(claims["user_id"].(string))
+	if err != nil {
+		return uuid.Nil, fmt.Errorf("%v", err)
+	}
+	return userID, nil
 }
 
 // Validate Email. Checks for correct formatting and valid domain

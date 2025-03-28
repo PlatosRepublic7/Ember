@@ -54,13 +54,19 @@ func (q *Queries) CreateMessage(ctx context.Context, arg CreateMessageParams) (M
 	return i, err
 }
 
-const getRecievedMessages = `-- name: GetRecievedMessages :many
+const getMessageHistoryWithNamedUser = `-- name: GetMessageHistoryWithNamedUser :many
 SELECT id, sender_id, recipient_id, content, created_at, read_at, ttl_seconds, expires_at, deleted FROM
-messages WHERE recipient_id = $1
+messages WHERE (sender_id = $1 AND recipient_id = $2) OR (sender_id = $2 AND recipient_id = $1) 
+AND deleted = false ORDER BY created_at DESC
 `
 
-func (q *Queries) GetRecievedMessages(ctx context.Context, recipientID uuid.UUID) ([]Message, error) {
-	rows, err := q.db.QueryContext(ctx, getRecievedMessages, recipientID)
+type GetMessageHistoryWithNamedUserParams struct {
+	SenderID    uuid.UUID
+	RecipientID uuid.UUID
+}
+
+func (q *Queries) GetMessageHistoryWithNamedUser(ctx context.Context, arg GetMessageHistoryWithNamedUserParams) ([]Message, error) {
+	rows, err := q.db.QueryContext(ctx, getMessageHistoryWithNamedUser, arg.SenderID, arg.RecipientID)
 	if err != nil {
 		return nil, err
 	}
@@ -92,13 +98,175 @@ func (q *Queries) GetRecievedMessages(ctx context.Context, recipientID uuid.UUID
 	return items, nil
 }
 
-const getSentMessages = `-- name: GetSentMessages :many
+const getReceivedMessagesFromNamedUser = `-- name: GetReceivedMessagesFromNamedUser :many
 SELECT id, sender_id, recipient_id, content, created_at, read_at, ttl_seconds, expires_at, deleted FROM
-messages WHERE sender_id = $1
+messages WHERE recipient_id = $1 AND sender_id = $2 AND deleted = false ORDER BY created_at DESC
 `
 
-func (q *Queries) GetSentMessages(ctx context.Context, senderID uuid.UUID) ([]Message, error) {
-	rows, err := q.db.QueryContext(ctx, getSentMessages, senderID)
+type GetReceivedMessagesFromNamedUserParams struct {
+	RecipientID uuid.UUID
+	SenderID    uuid.UUID
+}
+
+func (q *Queries) GetReceivedMessagesFromNamedUser(ctx context.Context, arg GetReceivedMessagesFromNamedUserParams) ([]Message, error) {
+	rows, err := q.db.QueryContext(ctx, getReceivedMessagesFromNamedUser, arg.RecipientID, arg.SenderID)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+	var items []Message
+	for rows.Next() {
+		var i Message
+		if err := rows.Scan(
+			&i.ID,
+			&i.SenderID,
+			&i.RecipientID,
+			&i.Content,
+			&i.CreatedAt,
+			&i.ReadAt,
+			&i.TtlSeconds,
+			&i.ExpiresAt,
+			&i.Deleted,
+		); err != nil {
+			return nil, err
+		}
+		items = append(items, i)
+	}
+	if err := rows.Close(); err != nil {
+		return nil, err
+	}
+	if err := rows.Err(); err != nil {
+		return nil, err
+	}
+	return items, nil
+}
+
+const getReceivedMessagesToThisUser = `-- name: GetReceivedMessagesToThisUser :many
+SELECT id, sender_id, recipient_id, content, created_at, read_at, ttl_seconds, expires_at, deleted FROM
+messages WHERE recipient_id = $1 AND deleted = false ORDER BY created_at DESC
+`
+
+func (q *Queries) GetReceivedMessagesToThisUser(ctx context.Context, recipientID uuid.UUID) ([]Message, error) {
+	rows, err := q.db.QueryContext(ctx, getReceivedMessagesToThisUser, recipientID)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+	var items []Message
+	for rows.Next() {
+		var i Message
+		if err := rows.Scan(
+			&i.ID,
+			&i.SenderID,
+			&i.RecipientID,
+			&i.Content,
+			&i.CreatedAt,
+			&i.ReadAt,
+			&i.TtlSeconds,
+			&i.ExpiresAt,
+			&i.Deleted,
+		); err != nil {
+			return nil, err
+		}
+		items = append(items, i)
+	}
+	if err := rows.Close(); err != nil {
+		return nil, err
+	}
+	if err := rows.Err(); err != nil {
+		return nil, err
+	}
+	return items, nil
+}
+
+const getSentMessagesFromThisUser = `-- name: GetSentMessagesFromThisUser :many
+SELECT id, sender_id, recipient_id, content, created_at, read_at, ttl_seconds, expires_at, deleted FROM
+messages WHERE sender_id = $1 AND deleted = false ORDER BY created_at DESC
+`
+
+func (q *Queries) GetSentMessagesFromThisUser(ctx context.Context, senderID uuid.UUID) ([]Message, error) {
+	rows, err := q.db.QueryContext(ctx, getSentMessagesFromThisUser, senderID)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+	var items []Message
+	for rows.Next() {
+		var i Message
+		if err := rows.Scan(
+			&i.ID,
+			&i.SenderID,
+			&i.RecipientID,
+			&i.Content,
+			&i.CreatedAt,
+			&i.ReadAt,
+			&i.TtlSeconds,
+			&i.ExpiresAt,
+			&i.Deleted,
+		); err != nil {
+			return nil, err
+		}
+		items = append(items, i)
+	}
+	if err := rows.Close(); err != nil {
+		return nil, err
+	}
+	if err := rows.Err(); err != nil {
+		return nil, err
+	}
+	return items, nil
+}
+
+const getSentMessagesToNamedUser = `-- name: GetSentMessagesToNamedUser :many
+SELECT id, sender_id, recipient_id, content, created_at, read_at, ttl_seconds, expires_at, deleted FROM
+messages WHERE sender_id = $1 AND recipient_id = $2 AND deleted = false ORDER BY created_at DESC
+`
+
+type GetSentMessagesToNamedUserParams struct {
+	SenderID    uuid.UUID
+	RecipientID uuid.UUID
+}
+
+func (q *Queries) GetSentMessagesToNamedUser(ctx context.Context, arg GetSentMessagesToNamedUserParams) ([]Message, error) {
+	rows, err := q.db.QueryContext(ctx, getSentMessagesToNamedUser, arg.SenderID, arg.RecipientID)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+	var items []Message
+	for rows.Next() {
+		var i Message
+		if err := rows.Scan(
+			&i.ID,
+			&i.SenderID,
+			&i.RecipientID,
+			&i.Content,
+			&i.CreatedAt,
+			&i.ReadAt,
+			&i.TtlSeconds,
+			&i.ExpiresAt,
+			&i.Deleted,
+		); err != nil {
+			return nil, err
+		}
+		items = append(items, i)
+	}
+	if err := rows.Close(); err != nil {
+		return nil, err
+	}
+	if err := rows.Err(); err != nil {
+		return nil, err
+	}
+	return items, nil
+}
+
+const getUserMessageHistory = `-- name: GetUserMessageHistory :many
+SELECT id, sender_id, recipient_id, content, created_at, read_at, ttl_seconds, expires_at, deleted FROM
+messages WHERE sender_id = $1 OR recipient_id = $1 AND deleted = false ORDER BY created_at DESC
+`
+
+func (q *Queries) GetUserMessageHistory(ctx context.Context, senderID uuid.UUID) ([]Message, error) {
+	rows, err := q.db.QueryContext(ctx, getUserMessageHistory, senderID)
 	if err != nil {
 		return nil, err
 	}

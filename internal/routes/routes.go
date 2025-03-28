@@ -30,5 +30,6 @@ func SetupRoutes(app *fiber.App, dbInstance *database.Queries) {
 
 	// Create a messageHandler
 	messageHandler := handlers.NewMessageHandler(dbInstance)
-	protected.Post("/message", messageHandler.HandlerCreateMessage)
+	protected.Post("/messages", messageHandler.HandlerCreateMessage)
+	protected.Get("/messages", messageHandler.HandlerGetMessages)
 }
